@@ -10,7 +10,9 @@ from wordfreq import tokenize, word_frequency
 from xml.dom.minidom import parse
 import xml.dom.minidom
 from sklearn.model_selection import train_test_split
+from transformers import pipeline
 
+ner = pipeline('ner', model='clarin-pl/FastPDN', aggregation_strategy='simple')
 
 # stanza.download('pl')
 
@@ -61,10 +63,19 @@ def prepare_wiki():
 
 
 def prepare_nkjp():
+    authors = prepare_nkjp_authors()
+    texts = prepare_nkjp_sentences()
+    merged = [dict(sent, **author) for sent, author in zip(texts, authors)]
+    df = pd.DataFrame(merged)
+    df.to_csv("../data/full_corpus/nkjp.csv")
+    # # result.columns = ['text']
+
+
+def prepare_nkjp_sentences():
     sentences = []
     data_path = "../data/raw/nkjp/NKJP-PodkorpusMilionowy-1.2"
     for filedir in os.listdir(data_path):
-        text_author_dict = {}
+        text_dict = {"file_id": filedir}
         file = os.path.join(data_path, filedir, "text.xml")
         DOMTree = xml.dom.minidom.parse(file)
         chunk_list = DOMTree.documentElement
@@ -72,24 +83,41 @@ def prepare_nkjp():
         for div in divs:
             sents = div.getElementsByTagName("ab")
             sents = [sent.childNodes[0].data for sent in sents]
-            text_author_dict["texts"] = sents
-            # text_piece = " ".join(sents)
-            # sentences.append(text_piece)
+            text_dict["texts"] = sents
+        sentences.append(text_dict)
+    return sentences
+
+
+def prepare_nkjp_authors():
+    data_path = "../data/raw/nkjp/NKJP-PodkorpusMilionowy-1.2"
+    authors = []
+    for filedir in os.listdir(data_path):
+        author_dict = {'file_id': filedir}
         header = os.path.join(data_path, filedir, "header.xml")
         DOMTree_auth = xml.dom.minidom.parse(header)
         chunk_list_auth = DOMTree_auth.documentElement
-        bibls = chunk_list_auth.getElementsByTagName("bibl")
-        for bibl in bibls:
-            author = bibl.getElementsByTagName("author")
-            author = author.childNodes[0].data
-            # author = author[0]
-            text_author_dict["author"] = author
-        sentences.append(text_author_dict)
-    # nkjp_train, nkjp_test = train_test_split(sentences, shuffle=True)
-    result = pd.DataFrame(sentences)
-    print(result.head())
-    # result.to_csv("../data/full_corpus/nkjp.csv")
-    # result.columns = ['text']
+        author_node = chunk_list_auth.getElementsByTagName("author")
+        if author_node and author_node[0].firstChild:
+            author = author_node[0].firstChild.nodeValue
+        else:
+            author = "Nie znany"
+        author_dict["author"] = author
+        authors.append(author_dict)
+    return authors
+
+
+def extract_ner(author: str) -> List[str]:
+    ner_res = ner(author)
+    return [output['entity_group'] for output in ner_res]
+
+
+def prepare_nkjp_ner(df: pd.DataFrame):
+    path_nkjp = "../data/full_corpus/nkjp.csv"
+    df = pd.read_csv(path_nkjp)
+    df_authors = df[df.author != 'Nie znany']
+    df_authors["ner"] = df_authors["author"].apply(lambda x: extract_ner(x))
+    path_out = "../data/full_corpus/nkjp_authors.csv"
+    df_authors.to_csv(path_out)
 
 
 def combine_corpus():
