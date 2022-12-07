@@ -10,9 +10,9 @@ from wordfreq import tokenize, word_frequency
 from xml.dom.minidom import parse
 import xml.dom.minidom
 from sklearn.model_selection import train_test_split
-from transformers import pipeline
+# from transformers import pipeline
 
-ner = pipeline('ner', model='clarin-pl/FastPDN', aggregation_strategy='simple')
+# ner = pipeline('ner', model='clarin-pl/FastPDN', aggregation_strategy='simple')
 
 # stanza.download('pl')
 
@@ -34,7 +34,7 @@ def prepare_oscar():
 
 def prepare_twitter():
     query = 'lang:pl'
-    limit = 2000000
+    limit = 1000000
     result = []
     tweets = sntwitter.TwitterSearchScraper(query).get_items()
     for i, tweet in enumerate(tweets):
@@ -42,7 +42,7 @@ def prepare_twitter():
             break
         result.append([tweet.content, tweet.username])
     tweets_df = pd.DataFrame(result, columns=['text', 'username'])
-    tweets_df['text'] = tweets_df['text'].apply(lambda x: clean_tweet(x))
+    # tweets_df['text'] = tweets_df['text'].apply(lambda x: clean_tweet(x))
     tweets_df.to_csv("/home/ndazhunts/CLARIN/stylometry/stylometry/data/full_corpus/tweets.csv")
 
 
@@ -106,18 +106,18 @@ def prepare_nkjp_authors():
     return authors
 
 
-def extract_ner(author: str) -> List[str]:
-    ner_res = ner(author)
-    return [output['entity_group'] for output in ner_res]
+# def extract_ner(author: str) -> List[str]:
+#     ner_res = ner(author)
+#     return [output['entity_group'] for output in ner_res]
 
 
-def prepare_nkjp_ner(df: pd.DataFrame):
-    path_nkjp = "../data/full_corpus/nkjp.csv"
-    df = pd.read_csv(path_nkjp)
-    df_authors = df[df.author != 'Nie znany']
-    df_authors["ner"] = df_authors["author"].apply(lambda x: extract_ner(x))
-    path_out = "../data/full_corpus/nkjp_authors.csv"
-    df_authors.to_csv(path_out)
+# def prepare_nkjp_ner(df: pd.DataFrame):
+#     path_nkjp = "../data/full_corpus/nkjp.csv"
+#     df = pd.read_csv(path_nkjp)
+#     df_authors = df[df.author != 'Nie znany']
+#     df_authors["ner"] = df_authors["author"].apply(lambda x: extract_ner(x))
+#     path_out = "../data/full_corpus/nkjp_authors.csv"
+#     df_authors.to_csv(path_out)
 
 
 def combine_corpus():
@@ -184,10 +184,13 @@ if __name__ == '__main__':
     # path_to_oscar = os.path.join(PATH_TO_RAW_DATA, "oscar_tokens_cleaned.csv")
     # oscar_df = pd.read_csv(path_to_oscar)
     # print(oscar_df.shape)
-    prepare_nkjp()
+    # prepare_nkjp()
     # oscar_df = oscar_df.fillna("100")
     # print(oscar_df['token'].isnull().values.any())
     # # serialize_corpus_tokens(oscar_df, "oscar_tokens.csv")
     # # get_word_frequencies('oscar_tokens.csv')
     # clean_frequencies(oscar_df)
     # lemmatize_text(oscar_df)
+    # nkjp = pd.read_csv("/home/ndazhunts/CLARIN/stylometry/stylometry/data/full_corpus/nkjp_authors.csv")
+    # print(nkjp['ner'].unique())
+    prepare_twitter()
