@@ -10,6 +10,7 @@ from wordfreq import tokenize, word_frequency
 from xml.dom.minidom import parse
 import xml.dom.minidom
 from sklearn.model_selection import train_test_split
+from emoji import is_emoji
 # from transformers import pipeline
 
 # ner = pipeline('ner', model='clarin-pl/FastPDN', aggregation_strategy='simple')
@@ -53,10 +54,23 @@ def clean_tweet(tweet: str):
     # remove other URLs
     tweet = re.sub(r'[-a-zA-Z0–9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0–9@:%_\+.~#?&//=]*)',
                    '', tweet, flags=re.MULTILINE)
+    tweet = re.sub(r"http\S+", "", tweet)
     # remove mentions, hashtags and emojis
-    tweet = ''.join(re.sub(r"(@[A-Za-z0–9]+)|([0-9A-Za-z \t])|(\w+:\/\/\S+)", " ", tweet).split())
+    tweet_split = tweet.split(' ')
+    tweet_split = [word for word in tweet_split if not is_emoji(word)
+                   and not word.startswith('@')
+                   and not word.startswith('#')
+                   and word.isalnum()]
+    tweet = ' '.join(tweet_split)
     return tweet
 
+
+def prepare_tweets():
+    path = "../data/full_corpus/tweets.csv"
+    tweets_df = pd.read_csv(path)
+    tweets_df = tweets_df.drop('Unnamed: 0', axis=1).fillna('')
+    tweets_df["text"] = tweets_df["text"].apply(lambda x: clean_tweet(x))
+    tweets_df.to_csv("../data/full_corpus/tweets.csv")
 
 def prepare_wiki():
     pass
@@ -193,4 +207,12 @@ if __name__ == '__main__':
     # lemmatize_text(oscar_df)
     # nkjp = pd.read_csv("/home/ndazhunts/CLARIN/stylometry/stylometry/data/full_corpus/nkjp_authors.csv")
     # print(nkjp['ner'].unique())
-    prepare_twitter()
+    # prepare_twitter()
+    # prepare_tweets()
+    tweets_df = pd.read_csv("../data/full_corpus/tweets.csv")
+    print(len(tweets_df['username'].unique()))
+    print(len(tweets_df['username']))
+    stats = tweets_df.groupby(['username'])['username'].count()
+    print(stats)
+    # todo: remove tweets shorter than 2 words, if it is the only tweet by a given author
+
