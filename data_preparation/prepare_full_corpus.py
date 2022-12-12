@@ -10,14 +10,18 @@ from wordfreq import tokenize, word_frequency
 from xml.dom.minidom import parse
 import xml.dom.minidom
 from sklearn.model_selection import train_test_split
-from emoji import is_emoji
+from multiprocessing import Pool
+
+
+# from emoji import is_emoji
+
 # from transformers import pipeline
 
 # ner = pipeline('ner', model='clarin-pl/FastPDN', aggregation_strategy='simple')
 
-# stanza.download('pl')
+stanza.download('pl')
 
-# nlp = stanza.Pipeline(lang='pl', processors='tokenize,mwt,pos,lemma')
+nlp = stanza.Pipeline(lang='pl', processors='tokenize,mwt,pos,lemma')
 
 PATH_TO_RAW_DATA = "../data/full_corpus/"
 
@@ -71,6 +75,7 @@ def prepare_tweets():
     tweets_df = tweets_df.drop('Unnamed: 0', axis=1).fillna('')
     tweets_df["text"] = tweets_df["text"].apply(lambda x: clean_tweet(x))
     tweets_df.to_csv("../data/full_corpus/tweets.csv")
+
 
 def prepare_wiki():
     pass
@@ -150,7 +155,13 @@ def serialize_corpus_tokens(dataset_df: pd.DataFrame, out_name) -> None:
         tokens.extend(tokenized)
     result = pd.DataFrame(tokens)
     result.columns = ['token']
-    result.to_csv(os.path.join(PATH_TO_RAW_DATA, out_name))
+
+    def has_numbers(inputString):
+        return any(char.isdigit() for char in inputString)
+
+    mask = (result['token'].apply(lambda x: not has_numbers(x)))
+    result = result.loc[mask]
+    result.to_csv(out_name)
 
 
 def clean_frequencies(tokens_df):
@@ -158,28 +169,54 @@ def clean_frequencies(tokens_df):
     tokens_df.to_csv("../data/full_corpus/oscar_tokens_cleaned.csv")
 
 
-# def lemmatize_token(token):
-#     doc = nlp(token)
-#     lemmas = []
-#     for sent in doc.sentences:
-#         for word in sent.words:
-#             lemmas.append(word.lemma)
-#     return lemmas[0]
-
-#
-# def lemmatize_text(tokens_df):
-#     tokens_df['token'] = tokens_df['token'].apply(lambda x: lemmatize_token(x))
-#     tokens_df.to_csv("../data/full_corpus/tokens_lemmatized.csv")
+def lemmatize_token(token):
+    doc = nlp(token)
+    lemmas = []
+    for sent in doc.sentences:
+        for word in sent.words:
+            lemmas.append(word.lemma)
+    return lemmas[0]
 
 
-def get_word_frequencies(tokens_file: str) -> None:
+def lemmatize_text(tokens_df, path_out):
+    tokens = list(set(tokens_df['token'].tolist()))
+    tokens = [token for token in tokens if type(token) == str]
+    with Pool(processes=6) as pool:
+        result = pool.map(func=lemmatize_token, iterable=tokens, chunksize=1)
+    lemmatized_df = pd.DataFrame(result)
+    lemmatized_df.columns = ['lemmas']
+    lemmatized_df['tokens'] = tokens
+    lemmatized_df.to_csv(path_out)
+
+
+def remove_short_tweets():
+    path = r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\tweets.csv"
+    df = pd.read_csv(path)
+    mask = (df['text'].apply(lambda x: len(str(x).split(' ')) > 2))
+    df = df.loc[mask]
+    df.to_csv(path)
+
+
+def prepare_tokens(path_to_raw: str) -> None:
+    full_path = os.path.join(PATH_TO_RAW_DATA, path_to_raw)
+    texts_df = pd.read_csv(full_path)
+
+
+def get_global_frequencies(tokens_file: str) -> pd.DataFrame:
+    path_to_ds = os.path.join(PATH_TO_RAW_DATA, tokens_file)
+    tokens_df = pd.read_csv(path_to_ds)
+    tokens_df["global_freq"] = tokens_df["tokens"].apply(lambda x: word_frequency(word=x, lang="pl"))
+    return tokens_df
+
+
+def get_local_frequencies(tokens_file: str, path_out: str) -> None:
     path_to_ds = os.path.join(PATH_TO_RAW_DATA, tokens_file)
     tokens_df = pd.read_csv(path_to_ds)
     print(tokens_df.columns)
     print(tokens_df.head())
     frequencies = tokens_df.groupby(['token'])['token'].count()
     print(frequencies.head())
-    frequencies.to_csv("../data/test.csv")
+    frequencies.to_csv(os.path.join(PATH_TO_RAW_DATA, path_out))
 
     #
     # for word in tokens:
@@ -209,10 +246,18 @@ if __name__ == '__main__':
     # print(nkjp['ner'].unique())
     # prepare_twitter()
     # prepare_tweets()
-    tweets_df = pd.read_csv("../data/full_corpus/tweets.csv")
-    print(len(tweets_df['username'].unique()))
-    print(len(tweets_df['username']))
-    stats = tweets_df.groupby(['username'])['username'].count()
-    print(stats)
-    # todo: remove tweets shorter than 2 words, if it is the only tweet by a given author
-
+    # remove_short_tweets()
+    # tweets_df = pd.read_csv(r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\tweets.csv")
+    #
+    # cols = [col for col in tweets_df.columns if "Unnamed" in col]
+    # for col in cols:
+    #     tweets_df = tweets_df.drop(col, axis=1)
+    in_path = r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\twitter_tokens.csv"
+    # serialize_corpus_tokens(dataset_df=tweets_df, out_name=out_path)
+    df = pd.read_csv(in_path)
+    out_path = r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\twitter_tokens_lemm.csv"
+    lemmatize_text(tokens_df=df, path_out=out_path)
+    # print(len(tweets_df['username'].unique()))
+    # print(len(tweets_df['username']))
+    # stats = tweets_df.groupby(['username'])['username'].count()
+    # print(stats)
