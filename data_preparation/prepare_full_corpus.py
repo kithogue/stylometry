@@ -1,6 +1,8 @@
 import os
 import re
 from typing import List
+
+import numpy as np
 import stanza
 import re
 import pandas as pd
@@ -11,7 +13,7 @@ from xml.dom.minidom import parse
 import xml.dom.minidom
 from sklearn.model_selection import train_test_split
 from multiprocessing import Pool
-
+from tqdm import tqdm
 
 # from emoji import is_emoji
 
@@ -21,7 +23,7 @@ from multiprocessing import Pool
 
 stanza.download('pl')
 
-nlp = stanza.Pipeline(lang='pl', processors='tokenize,mwt,pos,lemma')
+nlp = stanza.Pipeline(lang='pl', processors='tokenize,mwt,pos,lemma', use_gpu=True)
 
 PATH_TO_RAW_DATA = "../data/full_corpus/"
 
@@ -78,7 +80,22 @@ def prepare_tweets():
 
 
 def prepare_wiki():
-    pass
+    path = "../data/full_corpus/plwiki3"
+    texts = []
+    for letter in os.listdir(path):
+        for number in os.listdir(os.path.join(path, letter)):
+            for article in os.listdir(os.path.join(path, letter, number)):
+                path_to_text = os.path.join(path, letter, number, article)
+                if os.path.isfile(path_to_text):
+                    with open(path_to_text, 'r') as text:
+                        lines = text.readlines()
+                        lines = [line.strip() for line in lines if "<" not in line]
+                        lines = [line for line in lines if len(line) > 0]
+                        result = ' '.join(lines)
+                        texts.append(result)
+    result = pd.DataFrame(texts)
+    result.columns = ['text']
+    result.to_csv("../data/full_corpus/wiki.csv")
 
 
 def prepare_nkjp():
@@ -175,27 +192,33 @@ def lemmatize_token(token):
     for sent in doc.sentences:
         for word in sent.words:
             lemmas.append(word.lemma)
-    return lemmas[0]
+    return lemmas
 
 
-def lemmatize_text(tokens_df, path_out):
-    tokens = list(set(tokens_df['token'].tolist()))
-    tokens = [token for token in tokens if type(token) == str]
-    with Pool(processes=6) as pool:
-        result = pool.map(func=lemmatize_token, iterable=tokens, chunksize=1)
-    lemmatized_df = pd.DataFrame(result)
-    lemmatized_df.columns = ['lemmas']
-    lemmatized_df['tokens'] = tokens
-    lemmatized_df.to_csv(path_out)
+def lemmatize_text(dataset_df, path_out):
+    tokens = list(set(dataset_df['text'].tolist()))
+    lemmas = [lemmatize_token(token=word) for word in tokens]
+    assert len(tokens) == len(lemmas)
+    dataset_df['lemma'] = lemmas
+    dataset_df.to_csv(path_out)
+
 
 
 def remove_short_tweets():
-    path = r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\tweets.csv"
+    path = "../data/full_corpus/tweets.csv"
     df = pd.read_csv(path)
     mask = (df['text'].apply(lambda x: len(str(x).split(' ')) > 2))
     df = df.loc[mask]
     df.to_csv(path)
 
+def remove_unnecessary_authors():
+    path = "../data/full_corpus/tweets_pl.csv"
+    df = pd.read_csv(path)
+    authors_count = df[df.groupby('username').username.transform('count') >= 30].copy()
+    for col in authors_count.columns:
+        if 'Unnamed' in col:
+            authors_count = authors_count.drop(col, axis=1)
+    authors_count.to_csv(path)
 
 def prepare_tokens(path_to_raw: str) -> None:
     full_path = os.path.join(PATH_TO_RAW_DATA, path_to_raw)
@@ -252,11 +275,28 @@ if __name__ == '__main__':
     # cols = [col for col in tweets_df.columns if "Unnamed" in col]
     # for col in cols:
     #     tweets_df = tweets_df.drop(col, axis=1)
-    in_path = r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\twitter_tokens.csv"
-    # serialize_corpus_tokens(dataset_df=tweets_df, out_name=out_path)
-    df = pd.read_csv(in_path)
-    out_path = r"C:\SI22_2\NLP\dataset\stylometry\data\full_corpus\twitter_tokens_lemm.csv"
-    lemmatize_text(tokens_df=df, path_out=out_path)
+    # in_path = "../data/full_corpus/tweets_pl.csv"
+    # df = pd.read_csv(in_path)
+    prepare_wiki()
+    # print(df.columns)
+    # out_path_tokens = "../data/full_corpus/twitter_tokens.csv"
+    # serialize_corpus_tokens(dataset_df=df, out_name=out_path_tokens)
+    out_path_lemmas = "../data/full_corpus/tweets_pl_lemmas.csv"
+    # tokens_df = pd.read_csv(out_path_tokens)
+    # lemmatize_text(dataset_df=df, path_out=out_path_lemmas)
+    # remove_unnecessary_authors()
+    # n = 500000
+    # dfs = []
+    # for g, df_chunk in df.groupby(np.arange(len(df)) // n):
+    #     dfs.append(df_chunk)
+    # print(len(dfs))
+    # out_path = "../data/full_corpus/lemmas_twitter/"
+    # for i, chunk in enumerate(tqdm(dfs)):
+    #     filename = ''.join(["twitter_lemma", str(i), ".csv"])
+    #     lemmatize_text(chunk, os.path.join(out_path, filename))
+    #     print(f"{filename} serialized!")
+
+    # lemmatize_text(tokens_df=df, path_out=out_path)
     # print(len(tweets_df['username'].unique()))
     # print(len(tweets_df['username']))
     # stats = tweets_df.groupby(['username'])['username'].count()
